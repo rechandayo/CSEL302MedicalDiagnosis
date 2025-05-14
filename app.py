@@ -1,9 +1,11 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 import pandas as pd
+import numpy as np
 from sklearn.preprocessing import MultiLabelBinarizer
 from sklearn.model_selection import train_test_split
 from sklearn.naive_bayes import MultinomialNB
+from sklearn.metrics import accuracy_score
 import json
 from ttkthemes import ThemedTk
 
@@ -14,31 +16,62 @@ class MedicalDiagnosis:
         self.root.geometry("800x600")
         
         self.initialize_model()
+        self.load_treatments()
         self.create_frames()
         self.create_widgets()
         self.selected_symptoms = []
         
     def initialize_model(self):
+        # Load the dataset
         df = pd.read_csv("dataset.csv")
-        df.fillna('', inplace=True)
         
-        symptom_columns = df.columns[1:]
+        # Combine symptoms into a list per record
+        df['Symptoms'] = df[df.columns[1:]].values.tolist()
+        
+        # Clean and process symptoms
+        def clean_symptoms(symptoms_list):
+            cleaned = []
+            for symptom in symptoms_list:
+                # Convert to string if not NaN, strip, and convert to lowercase
+                if pd.notna(symptom) and str(symptom).strip():
+                    cleaned.append(str(symptom).strip().lower())
+            return cleaned
+            
+        df['Symptoms'] = df['Symptoms'].apply(clean_symptoms)
+        
+        # Get unique symptoms for the GUI
         self.unique_symptoms = set()
-        for column in symptom_columns:
-            symptoms = df[column].dropna().unique()
-            self.unique_symptoms.update([s.strip().lower() for s in symptoms if s != ''])
+        for symptoms in df['Symptoms']:
+            self.unique_symptoms.update(symptoms)
         self.unique_symptoms = sorted(list(self.unique_symptoms))
         
-        df['Symptoms'] = df[df.columns[1:]].values.tolist()
-        df['Symptoms'] = df['Symptoms'].apply(lambda x: [i.strip().lower() for i in x if i != ''])
-        
+        # Encode symptoms into binary format
         self.mlb = MultiLabelBinarizer()
         X = self.mlb.fit_transform(df['Symptoms'])
+        
+        # Target labels (Diseases)
         y = df['Disease']
         
-        X_train, _, y_train, _ = train_test_split(X, y, test_size=0.2, random_state=42)
+        # Train/test split
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+        
+        # Train Naive Bayes model
         self.model = MultinomialNB()
         self.model.fit(X_train, y_train)
+        
+        # Store disease classes
+        self.disease_classes = self.model.classes_
+        
+        # Print accuracy for monitoring
+        y_pred = self.model.predict(X_test)
+        print("Model Accuracy:", accuracy_score(y_test, y_pred))
+
+    def load_treatments(self):
+        try:
+            with open('treatments.json', 'r') as f:
+                self.treatments = json.load(f)
+        except FileNotFoundError:
+            self.treatments = {}
     
     def create_frames(self):
         self.main_frame = ttk.Frame(self.root, padding="10")
@@ -54,8 +87,11 @@ class MedicalDiagnosis:
         self.lists_frame = ttk.Frame(self.main_frame)
         self.lists_frame.grid(row=1, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
         
-        self.result_frame = ttk.LabelFrame(self.main_frame, text="Diagnosis Result", padding="5")
+        self.result_frame = ttk.LabelFrame(self.main_frame, text="Diagnosis Results", padding="5")
         self.result_frame.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
+        
+        self.treatment_frame = ttk.LabelFrame(self.main_frame, text="Treatment Information", padding="5")
+        self.treatment_frame.grid(row=3, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
         
     def create_widgets(self):
         self.search_var = tk.StringVar()
@@ -69,7 +105,7 @@ class MedicalDiagnosis:
         
         self.available_symptoms = tk.StringVar(value=self.unique_symptoms)
         self.symptoms_listbox = tk.Listbox(available_frame, listvariable=self.available_symptoms,
-                                         selectmode=tk.SINGLE, height=25, width=40)
+                                         selectmode=tk.SINGLE, height=15)
         self.symptoms_listbox.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
         scrollbar = ttk.Scrollbar(available_frame, orient=tk.VERTICAL, 
@@ -80,7 +116,7 @@ class MedicalDiagnosis:
         selected_frame = ttk.LabelFrame(self.lists_frame, text="Selected Symptoms")
         selected_frame.grid(row=0, column=1, sticky=(tk.W, tk.E, tk.N, tk.S), padx=5)
         
-        self.selected_listbox = tk.Listbox(selected_frame, height=25, width=40)
+        self.selected_listbox = tk.Listbox(selected_frame, height=15)
         self.selected_listbox.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
         selected_scrollbar = ttk.Scrollbar(selected_frame, orient=tk.VERTICAL,
@@ -103,11 +139,14 @@ class MedicalDiagnosis:
                                         command=self.diagnose)
         self.diagnose_button.grid(row=0, column=0, pady=5)
         
-        self.result_label = ttk.Label(self.result_frame, text="")
-        self.result_label.grid(row=1, column=0, pady=5)
+        # Create a Text widget for displaying multiple disease probabilities
+        self.result_text = tk.Text(self.result_frame, height=5, width=60, wrap=tk.WORD)
+        self.result_text.grid(row=1, column=0, pady=5, padx=5, sticky=(tk.W, tk.E))
+        self.result_text.config(state=tk.DISABLED)
         
-        self.confidence_label = ttk.Label(self.result_frame, text="")
-        self.confidence_label.grid(row=2, column=0, pady=5)
+        self.treatment_text = tk.Text(self.treatment_frame, height=8, width=60, wrap=tk.WORD)
+        self.treatment_text.grid(row=0, column=0, pady=5, padx=5, sticky=(tk.W, tk.E))
+        self.treatment_text.config(state=tk.DISABLED)
         
     def update_symptom_list(self, *args):
         search_term = self.search_var.get().lower()
@@ -136,22 +175,74 @@ class MedicalDiagnosis:
     def clear_symptoms(self):
         self.selected_symptoms.clear()
         self.selected_listbox.delete(0, tk.END)
-        self.result_label.config(text="")
-        self.confidence_label.config(text="")
+        self.result_text.config(state=tk.NORMAL)
+        self.result_text.delete(1.0, tk.END)
+        self.result_text.config(state=tk.DISABLED)
+        self.treatment_text.config(state=tk.NORMAL)
+        self.treatment_text.delete(1.0, tk.END)
+        self.treatment_text.config(state=tk.DISABLED)
+    
+    def show_treatments(self, disease):
+        self.treatment_text.config(state=tk.NORMAL)
+        self.treatment_text.delete(1.0, tk.END)
+        
+        if disease in self.treatments:
+            info = self.treatments[disease]
+            treatment_text = f"Treatment Information for {disease}:\n\n"
+            
+            treatment_text += "Recommended Treatments:\n"
+            for t in info['treatments']:
+                treatment_text += f"• {t}\n"
+            
+            treatment_text += "\nRecommended Medications:\n"
+            for m in info['medications']:
+                treatment_text += f"• {m}\n"
+            
+            treatment_text += "\nPreventive Measures:\n"
+            for p in info['prevention']:
+                treatment_text += f"• {p}\n"
+                
+            self.treatment_text.insert(tk.END, treatment_text)
+        else:
+            self.treatment_text.insert(tk.END, f"No treatment information available for {disease}")
+        
+        self.treatment_text.config(state=tk.DISABLED)
     
     def diagnose(self):
         if not self.selected_symptoms:
             messagebox.showwarning("Warning", "Please select at least one symptom.")
             return
-            
-        symptoms_encoded = self.mlb.transform([self.selected_symptoms])
         
-        prediction = self.model.predict(symptoms_encoded)
-        probabilities = self.model.predict_proba(symptoms_encoded)
-        max_prob = max(probabilities[0]) * 100
+        # Encode input symptoms
+        input_vector = self.mlb.transform([self.selected_symptoms])
         
-        self.result_label.config(text=f"Predicted Disease: {prediction[0]}")
-        self.confidence_label.config(text=f"Confidence: {max_prob:.2f}%")
+        # Get probabilities for all diseases
+        probabilities = self.model.predict_proba(input_vector)[0]
+        
+        # Sort diseases by probability
+        disease_probs = list(zip(self.disease_classes, probabilities))
+        disease_probs.sort(key=lambda x: x[1], reverse=True)
+        
+        # Find top prediction
+        top_disease, top_prob = disease_probs[0]
+        
+        # Display results
+        self.result_text.config(state=tk.NORMAL)
+        self.result_text.delete(1.0, tk.END)
+        
+        # Show top 5 most likely diseases
+        self.result_text.insert(tk.END, "Diagnosis Results:\n\n")
+        for disease, prob in disease_probs[:5]:
+            probability = prob * 100
+            if disease == top_disease:
+                self.result_text.insert(tk.END, f"► {disease}: {probability:.2f}% (Most Likely)\n")
+            else:
+                self.result_text.insert(tk.END, f"  {disease}: {probability:.2f}%\n")
+        
+        self.result_text.config(state=tk.DISABLED)
+        
+        # Show treatment for top disease
+        self.show_treatments(top_disease)
 
 def main():
     root = ThemedTk(theme="arc")
