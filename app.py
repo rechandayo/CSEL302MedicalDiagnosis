@@ -1,118 +1,162 @@
+import tkinter as tk
+from tkinter import ttk, messagebox
 import pandas as pd
 from sklearn.preprocessing import MultiLabelBinarizer
 from sklearn.model_selection import train_test_split
 from sklearn.naive_bayes import MultinomialNB
-from sklearn.metrics import accuracy_score, classification_report
+import json
+from ttkthemes import ThemedTk
 
-# Load the dataset
-df = pd.read_csv("dataset.csv")  # Replace with the actual file name
-
-# Fill missing values
-df.fillna('', inplace=True)
-
-# Get all unique symptoms from the dataset
-symptom_columns = df.columns[1:]  # All columns except 'Disease'
-unique_symptoms = set()
-for column in symptom_columns:
-    symptoms = df[column].dropna().unique()
-    unique_symptoms.update([s.strip().lower() for s in symptoms if s != ''])
-unique_symptoms = sorted(list(unique_symptoms))
-
-# Combine all symptoms into a single list per row
-df['Symptoms'] = df[df.columns[1:]].values.tolist()
-df['Symptoms'] = df['Symptoms'].apply(lambda x: [i.strip().lower() for i in x if i != ''])
-
-# Encode symptoms using MultiLabelBinarizer
-mlb = MultiLabelBinarizer()
-X = mlb.fit_transform(df['Symptoms'])
-
-# Encode diseases (target)
-y = df['Disease']
-
-# Train-test split
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-# Train Naive Bayes model
-model = MultinomialNB()
-model.fit(X_train, y_train)
-
-def display_symptoms(symptoms_list, page_size=10):
-    total_pages = (len(symptoms_list) + page_size - 1) // page_size
-    current_page = 0
-    
-    while True:
-        start_idx = current_page * page_size
-        end_idx = min(start_idx + page_size, len(symptoms_list))
+class MedicalDiagnosis:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Medical Diagnosis System")
+        self.root.geometry("800x600")
         
-        print("\nAvailable Symptoms (Page {} of {}):".format(current_page + 1, total_pages))
-        for idx, symptom in enumerate(symptoms_list[start_idx:end_idx], start=1):
-            print(f"{idx}. {symptom}")
+        self.initialize_model()
+        self.create_frames()
+        self.create_widgets()
+        self.selected_symptoms = []
         
-        print("\nNavigation:")
-        print("n - Next page")
-        print("p - Previous page")
-        print("s - Select symptom")
-        print("d - Done selecting")
-        choice = input("Enter your choice: ").lower()
+    def initialize_model(self):
+        df = pd.read_csv("dataset.csv")
+        df.fillna('', inplace=True)
         
-        if choice == 'n' and current_page < total_pages - 1:
-            current_page += 1
-        elif choice == 'p' and current_page > 0:
-            current_page -= 1
-        elif choice == 's':
-            try:
-                num = int(input(f"Enter symptom number (1-{page_size}): "))
-                if 1 <= num <= page_size:
-                    return symptoms_list[start_idx + num - 1]
-            except ValueError:
-                print("Invalid input. Please enter a number.")
-        elif choice == 'd':
-            return None
+        symptom_columns = df.columns[1:]
+        self.unique_symptoms = set()
+        for column in symptom_columns:
+            symptoms = df[column].dropna().unique()
+            self.unique_symptoms.update([s.strip().lower() for s in symptoms if s != ''])
+        self.unique_symptoms = sorted(list(self.unique_symptoms))
         
-        print("\n" + "="*50)
-
-def predict_disease(symptoms):
-    # Convert symptoms to lowercase and strip whitespace
-    symptoms = [s.strip().lower() for s in symptoms]
+        df['Symptoms'] = df[df.columns[1:]].values.tolist()
+        df['Symptoms'] = df['Symptoms'].apply(lambda x: [i.strip().lower() for i in x if i != ''])
+        
+        self.mlb = MultiLabelBinarizer()
+        X = self.mlb.fit_transform(df['Symptoms'])
+        y = df['Disease']
+        
+        X_train, _, y_train, _ = train_test_split(X, y, test_size=0.2, random_state=42)
+        self.model = MultinomialNB()
+        self.model.fit(X_train, y_train)
     
-    # Transform symptoms using the same MultiLabelBinarizer
-    symptoms_encoded = mlb.transform([symptoms])
+    def create_frames(self):
+        self.main_frame = ttk.Frame(self.root, padding="10")
+        self.main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        self.root.columnconfigure(0, weight=1)
+        self.root.rowconfigure(0, weight=1)
+        self.main_frame.columnconfigure(1, weight=1)
+        
+        self.search_frame = ttk.LabelFrame(self.main_frame, text="Search Symptoms", padding="5")
+        self.search_frame.grid(row=0, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
+        
+        self.lists_frame = ttk.Frame(self.main_frame)
+        self.lists_frame.grid(row=1, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
+        
+        self.result_frame = ttk.LabelFrame(self.main_frame, text="Diagnosis Result", padding="5")
+        self.result_frame.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
+        
+    def create_widgets(self):
+        self.search_var = tk.StringVar()
+        self.search_var.trace('w', self.update_symptom_list)
+        self.search_entry = ttk.Entry(self.search_frame, textvariable=self.search_var)
+        self.search_entry.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=5)
+        self.search_frame.columnconfigure(0, weight=1)
+        
+        available_frame = ttk.LabelFrame(self.lists_frame, text="Available Symptoms")
+        available_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=5)
+        
+        self.available_symptoms = tk.StringVar(value=self.unique_symptoms)
+        self.symptoms_listbox = tk.Listbox(available_frame, listvariable=self.available_symptoms,
+                                         selectmode=tk.SINGLE, height=25, width=40)
+        self.symptoms_listbox.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        scrollbar = ttk.Scrollbar(available_frame, orient=tk.VERTICAL, 
+                                command=self.symptoms_listbox.yview)
+        scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        self.symptoms_listbox.configure(yscrollcommand=scrollbar.set)
+        
+        selected_frame = ttk.LabelFrame(self.lists_frame, text="Selected Symptoms")
+        selected_frame.grid(row=0, column=1, sticky=(tk.W, tk.E, tk.N, tk.S), padx=5)
+        
+        self.selected_listbox = tk.Listbox(selected_frame, height=25, width=40)
+        self.selected_listbox.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        selected_scrollbar = ttk.Scrollbar(selected_frame, orient=tk.VERTICAL,
+                                         command=self.selected_listbox.yview)
+        selected_scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        self.selected_listbox.configure(yscrollcommand=selected_scrollbar.set)
+        
+        buttons_frame = ttk.Frame(self.lists_frame)
+        buttons_frame.grid(row=0, column=2, sticky=(tk.N, tk.S), padx=5)
+        
+        ttk.Button(buttons_frame, text="Add >", command=self.add_symptom).grid(row=0, column=0, pady=5)
+        ttk.Button(buttons_frame, text="< Remove", command=self.remove_symptom).grid(row=1, column=0, pady=5)
+        ttk.Button(buttons_frame, text="Clear All", command=self.clear_symptoms).grid(row=2, column=0, pady=5)
+        
+        self.lists_frame.columnconfigure(0, weight=1)
+        self.lists_frame.columnconfigure(1, weight=1)
+        self.lists_frame.rowconfigure(0, weight=1)
+        
+        self.diagnose_button = ttk.Button(self.result_frame, text="Diagnose",
+                                        command=self.diagnose)
+        self.diagnose_button.grid(row=0, column=0, pady=5)
+        
+        self.result_label = ttk.Label(self.result_frame, text="")
+        self.result_label.grid(row=1, column=0, pady=5)
+        
+        self.confidence_label = ttk.Label(self.result_frame, text="")
+        self.confidence_label.grid(row=2, column=0, pady=5)
+        
+    def update_symptom_list(self, *args):
+        search_term = self.search_var.get().lower()
+        filtered_symptoms = [s for s in self.unique_symptoms if search_term in s.lower()]
+        self.available_symptoms.set(filtered_symptoms)
     
-    # Make prediction
-    prediction = model.predict(symptoms_encoded)
-    probabilities = model.predict_proba(symptoms_encoded)
-    max_prob = max(probabilities[0]) * 100
+    def add_symptom(self):
+        selection = self.symptoms_listbox.curselection()
+        if not selection:
+            return
+            
+        symptom = self.symptoms_listbox.get(selection[0])
+        if symptom not in self.selected_symptoms:
+            self.selected_symptoms.append(symptom)
+            self.selected_listbox.insert(tk.END, symptom)
     
-    return prediction[0], max_prob
+    def remove_symptom(self):
+        selection = self.selected_listbox.curselection()
+        if not selection:
+            return
+            
+        symptom = self.selected_listbox.get(selection[0])
+        self.selected_symptoms.remove(symptom)
+        self.selected_listbox.delete(selection[0])
+    
+    def clear_symptoms(self):
+        self.selected_symptoms.clear()
+        self.selected_listbox.delete(0, tk.END)
+        self.result_label.config(text="")
+        self.confidence_label.config(text="")
+    
+    def diagnose(self):
+        if not self.selected_symptoms:
+            messagebox.showwarning("Warning", "Please select at least one symptom.")
+            return
+            
+        symptoms_encoded = self.mlb.transform([self.selected_symptoms])
+        
+        prediction = self.model.predict(symptoms_encoded)
+        probabilities = self.model.predict_proba(symptoms_encoded)
+        max_prob = max(probabilities[0]) * 100
+        
+        self.result_label.config(text=f"Predicted Disease: {prediction[0]}")
+        self.confidence_label.config(text=f"Confidence: {max_prob:.2f}%")
 
 def main():
-    print("\n=== Medical Diagnosis System ===")
-    print("Select your symptoms from the available list.")
-    print("You can navigate through pages and select multiple symptoms.")
-    
-    selected_symptoms = []
-    while True:
-        print("\nCurrent selected symptoms:", ", ".join(selected_symptoms) if selected_symptoms else "None")
-        symptom = display_symptoms(unique_symptoms)
-        
-        if symptom is None:
-            break
-            
-        if symptom not in selected_symptoms:
-            selected_symptoms.append(symptom)
-            print(f"\nAdded symptom: {symptom}")
-        else:
-            print("\nThis symptom is already selected.")
-    
-    if not selected_symptoms:
-        print("\nNo symptoms selected.")
-        return
-    
-    disease, confidence = predict_disease(selected_symptoms)
-    print("\nBased on your symptoms:")
-    print(f"Selected Symptoms: {', '.join(selected_symptoms)}")
-    print(f"Predicted Disease: {disease}")
-    print(f"Confidence: {confidence:.2f}%")
+    root = ThemedTk(theme="arc")
+    app = MedicalDiagnosis(root)
+    root.mainloop()
 
 if __name__ == "__main__":
-    main()
+    main() 
