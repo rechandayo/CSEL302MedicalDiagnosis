@@ -72,6 +72,24 @@ class MedicalDiagnosis:
                 self.treatments = json.load(f)
         except FileNotFoundError:
             self.treatments = {}
+        # Load precautions from CSV
+        try:
+            precaution_df = pd.read_csv('symptom_precaution.csv')
+            self.precautions = {}
+            for _, row in precaution_df.iterrows():
+                disease = str(row['Disease']).strip().lower()
+                precautions = [str(row[p]).strip() for p in precaution_df.columns[1:] if pd.notna(row[p]) and str(row[p]).strip()]
+                self.precautions[disease] = precautions
+        except Exception as e:
+            print(f"Could not load precautions: {e}")
+            self.precautions = {}
+        # Load descriptions from CSV
+        try:
+            desc_df = pd.read_csv('symptom_Description.csv')
+            self.descriptions = {str(row['Disease']).strip().lower(): str(row['Description']).strip() for _, row in desc_df.iterrows()}
+        except Exception as e:
+            print(f"Could not load descriptions: {e}")
+            self.descriptions = {}
     
     def create_frames(self):
         self.main_frame = ttk.Frame(self.root, padding="10")
@@ -140,11 +158,11 @@ class MedicalDiagnosis:
         self.diagnose_button.grid(row=0, column=0, pady=5)
         
         # Create a Text widget for displaying multiple disease probabilities
-        self.result_text = tk.Text(self.result_frame, height=5, width=60, wrap=tk.WORD)
+        self.result_text = tk.Text(self.result_frame, height=12, width=90, wrap=tk.WORD)
         self.result_text.grid(row=1, column=0, pady=5, padx=5, sticky=(tk.W, tk.E))
         self.result_text.config(state=tk.DISABLED)
         
-        self.treatment_text = tk.Text(self.treatment_frame, height=8, width=60, wrap=tk.WORD)
+        self.treatment_text = tk.Text(self.treatment_frame, height=16, width=90, wrap=tk.WORD)
         self.treatment_text.grid(row=0, column=0, pady=5, padx=5, sticky=(tk.W, tk.E))
         self.treatment_text.config(state=tk.DISABLED)
         
@@ -186,26 +204,19 @@ class MedicalDiagnosis:
         self.treatment_text.config(state=tk.NORMAL)
         self.treatment_text.delete(1.0, tk.END)
         
-        if disease in self.treatments:
-            info = self.treatments[disease]
-            treatment_text = f"Treatment Information for {disease}:\n\n"
-            
-            treatment_text += "Recommended Treatments:\n"
-            for t in info['treatments']:
-                treatment_text += f"• {t}\n"
-            
-            treatment_text += "\nRecommended Medications:\n"
-            for m in info['medications']:
-                treatment_text += f"• {m}\n"
-            
-            treatment_text += "\nPreventive Measures:\n"
-            for p in info['prevention']:
+        treatment_text = ""
+        # Add disease description from CSV
+        desc = self.descriptions.get(disease.strip().lower())
+        if desc:
+            treatment_text += f"Description: {desc}\n\n"
+        precautions = self.precautions.get(disease.strip().lower())
+        if precautions:
+            treatment_text += "\nPrecautions:\n"
+            for p in precautions:
                 treatment_text += f"• {p}\n"
-                
-            self.treatment_text.insert(tk.END, treatment_text)
         else:
-            self.treatment_text.insert(tk.END, f"No treatment information available for {disease}")
-        
+            treatment_text += "\nNo additional precautions found for this disease.\n"
+        self.treatment_text.insert(tk.END, treatment_text)
         self.treatment_text.config(state=tk.DISABLED)
     
     def diagnose(self):

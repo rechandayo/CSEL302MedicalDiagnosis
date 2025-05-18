@@ -1,0 +1,78 @@
+{
+    "Common Cold": {
+        "treatments": [
+            "Rest and adequate sleep",
+            "Stay hydrated with water and warm liquids",
+            "Over-the-counter decongestants",
+            "Gargle with warm salt water",
+            "Use a humidifier"
+        ],
+        "medications": ["Acetaminophen", "Ibuprofen", "Decongestants"],
+        "prevention": [
+            "Wash hands frequently",
+            "Avoid close contact with infected people",
+            "Maintain good immune system through proper diet"
+        ]
+    },
+    "Influenza": {
+        "treatments": [
+            "Bed rest",
+            "Stay hydrated",
+            "Use fever-reducing medications",
+            "Avoid contact with others"
+        ],
+        "medications": ["Oseltamivir (Tamiflu)", "Zanamivir (Relenza)", "Acetaminophen"],
+        "prevention": [
+            "Annual flu vaccination",
+            "Regular hand washing",
+            "Maintain healthy lifestyle"
+        ]
+    },
+    "Hypertension": {
+        "treatments": [
+            "Regular blood pressure monitoring",
+            "Reduce sodium intake",
+            "Regular exercise",
+            "Stress management",
+            "Maintain healthy weight"
+        ],
+        "medications": ["ACE inhibitors", "Beta blockers", "Diuretics"],
+        "prevention": [
+            "Regular exercise",
+            "Healthy diet low in sodium",
+            "Limit alcohol consumption",
+            "Quit smoking"
+        ]
+    },
+    "Diabetes": {
+        "treatments": [
+            "Blood sugar monitoring",
+            "Regular exercise",
+            "Balanced diet",
+            "Weight management",
+            "Foot care"
+        ],
+        "medications": ["Metformin", "Insulin", "Sulfonylureas"],
+        "prevention": [
+            "Maintain healthy weight",
+            "Regular exercise",
+            "Balanced diet",
+            "Regular health checkups"
+        ]
+    },
+    "Migraine": {
+        "treatments": [
+            "Rest in a quiet, dark room",
+            "Apply cold or warm compress",
+            "Stay hydrated",
+            "Practice stress management"
+        ],
+        "medications": ["Triptans", "NSAIDs", "Anti-nausea medications"],
+        "prevention": [
+            "Identify and avoid triggers",
+            "Maintain regular sleep schedule",
+            "Stay hydrated",
+            "Stress management"
+        ]
+    }
+} 
